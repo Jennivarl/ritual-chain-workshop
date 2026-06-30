@@ -11,6 +11,16 @@
 
 **26 Solidity tests passing** (`cd hardhat && npx hardhat test solidity`).
 
+### Live on Ritual testnet (chain 1979)
+Both contracts are deployed and verified on-chain:
+
+| Contract | Address | Deploy tx |
+|----------|---------|-----------|
+| `AIJudge` | `0xf55ba24e0c024f8f31f0b9fa8c4ef7dc871546ca` | `0x656353e0363c966f28f2065bfc127c2ce95a1ac00094f8a96add0328a64415b1` |
+| `SealedAIJudge` | `0xa8d89f5af5dcc8699885f336b02eb0d6c5c383bd` | `0x92031640b06cd2ef4fff9dd5a4e8d598fae88d9836173065127eff0885b50628` |
+
+Sanity check: both return `nextBountyId() == 1`.
+
 ---
 
 ## 0. The flaw, and two ways I fixed it
