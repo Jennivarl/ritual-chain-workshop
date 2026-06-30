@@ -67,7 +67,7 @@ contract AIJudgeTest is Test {
         bytes32 salt,
         address who
     ) internal pure returns (bytes32) {
-        return keccak256(abi.encode(answer, salt, who, bountyId));
+        return keccak256(abi.encodePacked(answer, salt, who, bountyId));
     }
 
     function _commit(

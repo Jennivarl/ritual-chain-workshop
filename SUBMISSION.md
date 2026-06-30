@@ -9,15 +9,15 @@
 | Advanced | [`hardhat/contracts/SealedAIJudge.sol`](hardhat/contracts/SealedAIJudge.sol) | [`test/SealedAIJudge.t.sol`](hardhat/test/SealedAIJudge.t.sol) |
 | Off-chain encrypt helper | — | [`web/src/lib/sealedSubmission.ts`](web/src/lib/sealedSubmission.ts) |
 
-**26 Solidity tests passing** (`cd hardhat && npx hardhat test solidity`).
+**29 Solidity tests passing** (`cd hardhat && npx hardhat test solidity`).
 
 ### Live on Ritual testnet (chain 1979)
 Both contracts are deployed and verified on-chain:
 
 | Contract | Address | Deploy tx |
 |----------|---------|-----------|
-| `AIJudge` | `0xf55ba24e0c024f8f31f0b9fa8c4ef7dc871546ca` | `0x656353e0363c966f28f2065bfc127c2ce95a1ac00094f8a96add0328a64415b1` |
-| `SealedAIJudge` | `0xa8d89f5af5dcc8699885f336b02eb0d6c5c383bd` | `0x92031640b06cd2ef4fff9dd5a4e8d598fae88d9836173065127eff0885b50628` |
+| `AIJudge` | `0x925d2b293f595b45a6b662bd52a007d8ce0d1c7c` | `0xeecf396f2b512258efbe470edca85f7c0289fe553684233717b60e7c9b43db52` |
+| `SealedAIJudge` | `0x1846fd0533e1b63946ff7cc7933307e8bcd75aea` | `0x1260f1dbb7d8b6752394a6cc10c57c987712bd788a9c5ec8fa52a11d65db0e59` |
 
 Sanity check: both return `nextBountyId() == 1`.
 
@@ -61,7 +61,7 @@ createBounty ──► submitCommitment ──► revealAnswer ──► judgeAl
 
 ### The commitment
 ```
-commitment = keccak256(abi.encode(answer, salt, msg.sender, bountyId))
+commitment = keccak256(abi.encodePacked(answer, salt, msg.sender, bountyId))
 ```
 - **answer** — the hidden value.
 - **salt** — random secret; stops short answers being brute-forced from the hash.
@@ -70,11 +70,10 @@ commitment = keccak256(abi.encode(answer, salt, msg.sender, bountyId))
   (Test: `test_Reveal_StolenCommitmentByOther_Reverts`.)
 - **bountyId** — no cross-bounty replay.
 
-I used `abi.encode` (not `encodePacked`) on purpose — with a dynamic `string`
-in the mix, packed encoding can be ambiguous. The off-chain helper
-([viem snippet in §6](#6-building-the-commitment-off-chain-required-track)) uses
-the exact same layout, and `test_ComputeCommitment_MatchesReveal` proves they
-agree.
+This is the exact `abi.encodePacked(...)` formula the brief suggests. The
+off-chain helper ([viem snippet in §6](#6-building-the-commitment-off-chain-required-track))
+packs the same fields in the same order, and `test_ComputeCommitment_MatchesReveal`
+proves the off-chain and on-chain hashes agree.
 
 ---
 
@@ -112,6 +111,18 @@ sovereign agent on Ritual):
    TEE**, which decrypts all submissions and scores them in **one batched
    inference call** — not one call per answer.
 
+### How the final reveal happens (and how the contract commits to it)
+After judging, the owner publishes the bundle of all (now decrypted) answers
+off-chain — e.g. on IPFS — and calls `commitRevealedBundle(bountyId, ref,
+answersHash)`. The contract stores a **reference** (`revealedAnswersRef`) and the
+**hash** (`revealedAnswersHash`) of that bundle, not the answers themselves.
+Anyone can then fetch `ref`, hash its contents, and check it equals
+`revealedAnswersHash` — so the reveal is verifiable and tamper-evident **without
+storing large plaintext on-chain** (which is exactly the gas concern the brief
+flags). The AI's review (`aiReview`) plus this bundle commitment together give the
+PDF's suggested final output: `winnerIndex`, ranking, `revealedAnswersRef`,
+`revealedAnswersHash`, summary.
+
 ### Honest limitation
 The starter itself notes the LLM precompile's exact ABI is *"not yet publicly
 pinned down"*, and the precise convention for how decrypted `encryptedSecrets`
@@ -123,7 +134,7 @@ docs. I'd rather state that than fake a green check.
 
 ---
 
-## 3. Tests — 26 passing
+## 3. Tests — 29 passing
 
 `cd hardhat && npx hardhat test solidity`
 
@@ -137,11 +148,12 @@ early/late reveals; one commit & one reveal per wallet; reveal-without-commit
 reverts; only owner judges; judging blocked until reveals close; an unrevealed
 entry can't win; off-chain hash matches on-chain.
 
-**Sealed (`SealedAIJudge.t.sol`, 10):** full encrypted lifecycle + payout; only
+**Sealed (`SealedAIJudge.t.sol`, 13):** full encrypted lifecycle + payout; only
 ciphertext is stored and there is **no function that returns plaintext**;
 submit-after-deadline / double-submit / empty / oversized ciphertext revert;
 judging blocked before deadline, by non-owners, and with zero submissions;
-finalize-before-judged reverts.
+finalize-before-judged reverts; final-reveal bundle commits ref+hash, and is
+blocked before judging and for non-owners.
 
 ---
 
@@ -191,12 +203,12 @@ one irreversible action.
 ## 6. Building the commitment off-chain (required track)
 
 ```ts
-import { encodeAbiParameters, keccak256, toHex } from "viem";
+import { encodePacked, keccak256, toHex } from "viem";
 
 const salt = toHex(crypto.getRandomValues(new Uint8Array(32))); // keep secret!
 const commitment = keccak256(
-  encodeAbiParameters(
-    [{ type: "string" }, { type: "bytes32" }, { type: "address" }, { type: "uint256" }],
+  encodePacked(
+    ["string", "bytes32", "address", "uint256"],
     [answer, salt, submitter, bountyId]
   )
 );
@@ -212,7 +224,7 @@ For the sealed track, see [`web/src/lib/sealedSubmission.ts`](web/src/lib/sealed
 cd hardhat
 npm install
 npx hardhat compile
-npx hardhat test solidity        # 26 passing
+npx hardhat test solidity        # 29 passing
 
 # deploy to Ritual testnet (chain 1979)
 npx hardhat keystore set DEPLOYER_PRIVATE_KEY

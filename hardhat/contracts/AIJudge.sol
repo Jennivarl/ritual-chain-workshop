@@ -159,7 +159,7 @@ contract AIJudge is PrecompileConsumer {
     /// @notice Submit only a commitment hash. The plaintext answer is NOT sent
     ///         on-chain here, so nobody can read or copy it.
     /// @dev The commitment must equal
-    ///      keccak256(abi.encode(answer, salt, msg.sender, bountyId)).
+    ///      keccak256(abi.encodePacked(answer, salt, msg.sender, bountyId)).
     function submitCommitment(
         uint256 bountyId,
         bytes32 commitment
@@ -216,7 +216,7 @@ contract AIJudge is PrecompileConsumer {
         require(!submission.revealed, "already revealed");
 
         bytes32 expected = keccak256(
-            abi.encode(answer, salt, msg.sender, bountyId)
+            abi.encodePacked(answer, salt, msg.sender, bountyId)
         );
         require(expected == submission.commitment, "commitment mismatch");
 
@@ -382,6 +382,6 @@ contract AIJudge is PrecompileConsumer {
         bytes32 salt,
         address submitter
     ) external pure returns (bytes32) {
-        return keccak256(abi.encode(answer, salt, submitter, bountyId));
+        return keccak256(abi.encodePacked(answer, salt, submitter, bountyId));
     }
 }

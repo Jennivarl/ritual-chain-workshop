@@ -46,6 +46,11 @@ contract SealedAIJudge is PrecompileConsumer {
         bool finalized;
         bytes aiReview;
         uint256 winnerIndex;
+        // Final reveal: a reference (e.g. IPFS) to the off-chain bundle of all
+        // answers, plus its hash — so the reveal is auditable without storing
+        // large plaintext on-chain.
+        string revealedAnswersRef;
+        bytes32 revealedAnswersHash;
         SealedSubmission[] submissions;
         mapping(address => uint256) slotOf; // 1-based; 0 == not submitted
     }
@@ -74,6 +79,12 @@ contract SealedAIJudge is PrecompileConsumer {
     );
 
     event AllAnswersJudged(uint256 indexed bountyId, bytes aiReview);
+
+    event RevealedBundleCommitted(
+        uint256 indexed bountyId,
+        bytes32 revealedAnswersHash,
+        string revealedAnswersRef
+    );
 
     event WinnerFinalized(
         uint256 indexed bountyId,
@@ -199,6 +210,31 @@ contract SealedAIJudge is PrecompileConsumer {
     }
 
     // ---------------------------------------------------------------------
+    // Final reveal (commit to the off-chain answer bundle)
+    // ---------------------------------------------------------------------
+
+    /// @notice After judging, the owner publishes the bundle of all (now
+    ///         decrypted) answers off-chain — e.g. on IPFS — and commits to its
+    ///         hash on-chain. Anyone can later fetch `ref`, hash it, and check it
+    ///         against `revealedAnswersHash` to confirm the bundle wasn't altered.
+    ///         This is how the final reveal stays verifiable without storing
+    ///         large plaintext answers in contract storage.
+    function commitRevealedBundle(
+        uint256 bountyId,
+        string calldata ref,
+        bytes32 answersHash
+    ) external bountyExists(bountyId) onlyOwner(bountyId) {
+        Bounty storage bounty = bounties[bountyId];
+        require(bounty.judged, "not judged yet");
+        require(answersHash != bytes32(0), "empty hash");
+
+        bounty.revealedAnswersRef = ref;
+        bounty.revealedAnswersHash = answersHash;
+
+        emit RevealedBundleCommitted(bountyId, answersHash, ref);
+    }
+
+    // ---------------------------------------------------------------------
     // Finalize
     // ---------------------------------------------------------------------
 
@@ -261,6 +297,20 @@ contract SealedAIJudge is PrecompileConsumer {
             bounty.winnerIndex,
             bounty.aiReview
         );
+    }
+
+    /// @notice The committed final-reveal bundle: an off-chain reference to all
+    ///         answers and the hash they must match.
+    function getRevealedBundle(
+        uint256 bountyId
+    )
+        external
+        view
+        bountyExists(bountyId)
+        returns (string memory ref, bytes32 answersHash)
+    {
+        Bounty storage bounty = bounties[bountyId];
+        return (bounty.revealedAnswersRef, bounty.revealedAnswersHash);
     }
 
     /// @notice Returns the stored ciphertext for a submission. Exposing it is

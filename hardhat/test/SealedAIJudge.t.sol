@@ -170,4 +170,47 @@ contract SealedAIJudgeTest is Test {
         vm.expectRevert(bytes("not judged yet"));
         judge.finalizeWinner(id, 0);
     }
+
+    // ----- final reveal bundle --------------------------------------------
+
+    function test_CommitRevealedBundle() public {
+        uint256 id = _createBounty();
+        vm.prank(alice);
+        judge.submitSealed(id, aliceCipher);
+        vm.warp(submitDeadline);
+
+        MockLLMSealed mock = new MockLLMSealed();
+        vm.etch(address(0x0802), address(mock).code);
+        vm.prank(owner);
+        judge.judgeAll(id, hex"1234");
+
+        vm.prank(owner);
+        judge.commitRevealedBundle(id, "ipfs://bundleCID", keccak256("all-answers"));
+
+        (string memory ref, bytes32 h) = judge.getRevealedBundle(id);
+        assertEq(ref, "ipfs://bundleCID");
+        assertEq(h, keccak256("all-answers"));
+    }
+
+    function test_CommitRevealedBundle_BeforeJudged_Reverts() public {
+        uint256 id = _createBounty();
+        vm.prank(owner);
+        vm.expectRevert(bytes("not judged yet"));
+        judge.commitRevealedBundle(id, "ipfs://x", keccak256("x"));
+    }
+
+    function test_CommitRevealedBundle_NotOwner_Reverts() public {
+        uint256 id = _createBounty();
+        vm.prank(alice);
+        judge.submitSealed(id, aliceCipher);
+        vm.warp(submitDeadline);
+        MockLLMSealed mock = new MockLLMSealed();
+        vm.etch(address(0x0802), address(mock).code);
+        vm.prank(owner);
+        judge.judgeAll(id, hex"1234");
+
+        vm.prank(alice);
+        vm.expectRevert(bytes("not bounty owner"));
+        judge.commitRevealedBundle(id, "ipfs://x", keccak256("x"));
+    }
 }
